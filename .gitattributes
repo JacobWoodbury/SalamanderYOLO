@@ -1,0 +1,2 @@
+# Large YOLO weights — use Git LFS so commits stay small.
+*.pt filter=lfs diff=lfs merge=lfs -text

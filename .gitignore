@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+*.egg-info/
+.pytest_cache/
+
+# Backend job uploads and artifacts
+backend/data/
+
+# YOLO dataset artifacts and training runs
+data/dataset/images/
+data/dataset/labels/
+runs/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

@@ -7,7 +7,9 @@ Supports two input paths:
 1. **YOLO** — automatic detection + tracking when `weights/best.pt` is present.
 2. **Label Studio JSON** — preview manual `videorectangle` video labels without running YOLO.
 
+## YOLO vs Masking
 ---
+Masking would work well when using the plastic salamanders on a table or floor. Their colors are consistent, and the background is generally consistent. When it comes to real salamanders there colors very much more, with some actively blending to their enviornment. YOLO can perform better when it needs to detect the shapes when colors might be too similar to distinguish. 
 
 ## How to run
 

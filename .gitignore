@@ -13,7 +13,10 @@ backend/data/
 # YOLO dataset artifacts and training runs
 data/dataset/images/
 data/dataset/labels/
-runs/
+# Keep training result artifacts (plots, CSV, args.yaml) but ignore weights and cache
+runs/**/weights/
+runs/**/__pycache__/
+runs/**/*.cache
 
 # Node
 frontend/node_modules/
@@ -23,3 +26,6 @@ frontend/dist/
 .DS_Store
 .idea/
 .vscode/
+
+# Runs folder
+runs/

@@ -14,9 +14,10 @@ type Props = {
   data: TracksPayload;
   currentFrame: number;
   counts: { t: number; count: number }[];
+  screenTimes: { id: number; frames: number; seconds: number }[];
 };
 
-export default function MetricsPanel({ data, currentFrame, counts }: Props) {
+export default function MetricsPanel({ data, currentFrame, counts, screenTimes }: Props) {
   const frame: FrameTracks | undefined = data.frames[currentFrame];
   const fps = data.meta.fps || 30;
 
@@ -63,6 +64,35 @@ export default function MetricsPanel({ data, currentFrame, counts }: Props) {
             </LineChart>
           </ResponsiveContainer>
         </div>
+      </div>
+      <div className="metric-card">
+        <h3>Time on screen per individual</h3>
+        {screenTimes.length === 0 ? (
+          <p className="muted" style={{ margin: 0 }}>
+            No tracks detected.
+          </p>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left", paddingBottom: "0.4rem", borderBottom: "1px solid #e2e8f0" }}>Track</th>
+                <th style={{ textAlign: "right", paddingBottom: "0.4rem", borderBottom: "1px solid #e2e8f0" }}>Frames</th>
+                <th style={{ textAlign: "right", paddingBottom: "0.4rem", borderBottom: "1px solid #e2e8f0" }}>Time (s)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {screenTimes.map((row) => (
+                <tr key={row.id}>
+                  <td style={{ padding: "0.3rem 0", color: colorForId(row.id), fontWeight: 600 }}>
+                    Track {row.id}
+                  </td>
+                  <td style={{ textAlign: "right", padding: "0.3rem 0" }}>{row.frames}</td>
+                  <td style={{ textAlign: "right", padding: "0.3rem 0" }}>{row.seconds.toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );

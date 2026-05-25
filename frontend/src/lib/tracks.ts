@@ -46,3 +46,19 @@ export function colorForId(id: number): string {
   const hue = (id * 47) % 360;
   return `hsl(${hue} 85% 52%)`;
 }
+
+/** Per-track time on screen in seconds, sorted by descending time. */
+export function timeOnScreen(
+  data: TracksPayload
+): { id: number; frames: number; seconds: number }[] {
+  const fps = data.meta.fps || 30;
+  const counts = new Map<number, number>();
+  for (const frame of data.frames) {
+    for (const t of frame.tracks) {
+      counts.set(t.id, (counts.get(t.id) ?? 0) + 1);
+    }
+  }
+  return Array.from(counts.entries())
+    .map(([id, frames]) => ({ id, frames, seconds: frames / fps }))
+    .sort((a, b) => b.seconds - a.seconds);
+}

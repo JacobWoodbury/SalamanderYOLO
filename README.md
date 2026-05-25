@@ -7,6 +7,12 @@ Supports two input paths:
 1. **YOLO** — automatic detection + tracking when `weights/best.pt` is present.
 2. **Label Studio JSON** — preview manual `videorectangle` video labels without running YOLO.
 
+## Dataset and training pipeline
+
+We labeled **63 frames** total (50 train / 13 val) using Label Studio's video labeling tool with axis-aligned `videorectangle` bounding boxes. Source footage came from seven trimmed MP4 clips covering multiple plastic salamander colors (blue, grey, ensatina), varied backgrounds, different distances, and multi-salamander scenes (`lotsa_salamanders`, `two_salamanders`). Keyframes were exported as Label Studio JSON, then `scripts/prepare_dataset.py` extracted each keyframe from the video with OpenCV and wrote a matching YOLO-format `.txt` label, converting percent-space coordinates to normalized `x_center y_center width height`.
+
+Training used `scripts/train.py` with `yolo11n.pt` as the base, `imgsz=320`, `batch=8`, `epochs=50`, and default Ultralytics augmentations (HSV jitter, mosaic, horizontal flip). Two runs were produced (`salamander_run1`, `salamander_run2`). The best weights from run 2 (final epoch: precision=1.00, recall=0.99, mAP@50=0.995) were copied to `weights/best.pt`.
+
 ## YOLO vs Masking
 ---
 Masking would work well when using the plastic salamanders on a table or floor. Their colors are consistent, and the background is generally consistent. When it comes to real salamanders there colors very much more, with some actively blending to their enviornment. YOLO can perform better when it needs to detect the shapes when colors might be too similar to distinguish. 

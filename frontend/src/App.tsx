@@ -3,7 +3,7 @@ import type { JobStatusResponse, TracksPayload } from "./types";
 import VideoPlayerOverlay from "./components/VideoPlayerOverlay";
 import MetricsPanel from "./components/MetricsPanel";
 import ProgressWheel from "./components/ProgressWheel";
-import { buildPaths, detectionCounts, totalDetections } from "./lib/tracks";
+import { buildPaths, detectionCounts, timeOnScreen, totalDetections } from "./lib/tracks";
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
@@ -77,6 +77,7 @@ export default function App() {
   const paths = useMemo(() => (tracks ? buildPaths(tracks) : new Map()), [tracks]);
   const counts = useMemo(() => (tracks ? detectionCounts(tracks) : []), [tracks]);
   const detectionTotal = useMemo(() => (tracks ? totalDetections(tracks) : 0), [tracks]);
+  const screenTimes = useMemo(() => (tracks ? timeOnScreen(tracks) : []), [tracks]);
 
   const onFrameChange = useCallback((frame: number) => {
     setCurrentFrame(frame);
@@ -244,7 +245,7 @@ export default function App() {
             />
           </section>
           <section className="panel">
-            <MetricsPanel data={tracks} currentFrame={currentFrame} counts={counts} />
+            <MetricsPanel data={tracks} currentFrame={currentFrame} counts={counts} screenTimes={screenTimes} />
           </section>
         </>
       )}

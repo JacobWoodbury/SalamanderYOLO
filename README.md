@@ -1,34 +1,65 @@
 # SallyTracker — Salamander video tracker
 
-Full-stack demo: upload a short salamander clip, run **Ultralytics YOLO** tracking on a **FastAPI** backend, then play the video in a **React (Vite)** UI with bounding boxes, a **path trail**, **live center coordinates**, and a **detection count vs time** chart.
+Full-stack app: upload a salamander clip, run **Ultralytics YOLO** tracking on a **FastAPI** backend, then play the video in a **React (Vite)** UI with bounding boxes, a **path trail**, **live center coordinates**, and a **detection count vs time** chart. A **progress wheel** shows job status while processing.
+
+Supports two input paths:
+
+1. **YOLO** — automatic detection + tracking when `weights/best.pt` is present.
+2. **Label Studio JSON** — preview manual `videorectangle` video labels without running YOLO.
+
+---
 
 ## How to run
 
 ### Prerequisites
 
-- Python 3.11+ recommended  
-- Node 20+  
-- **Either** a YOLO weights file at **`weights/best.pt`** (or `YOLO_WEIGHTS` pointing at any `.pt` for wiring tests), **or** a **Label Studio JSON** export with `videorectangle` annotations (see below) so you can preview labels **without** running YOLO.
-
-### Label Studio JSON (no `best.pt` required)
-
-Export your project as **JSON** (tasks with `videorectangle` results). In the web UI, pick the same video file you annotated, attach the JSON, and click **Build playback from labels**. The backend matches the upload to a task by filename (e.g. your `Salamander_Video_1.mp4` matches `86128414-Salamander_Video_1.mp4` in the export). If several tasks could match, set **Task id** to the Label Studio task id (for example `67`).
-
-This path **interpolates** sparse keyframes to every frame, writes the same `tracks.json` shape the player already uses, and sets `meta.model_path` to `label_studio_import`. **Rotated** boxes are approximated as **axis-aligned** rectangles in percent space (rotation is ignored). **CSV** exports are not supported here; use JSON.
-
-This is **not** a substitute for training: it only visualizes what you already labeled. For automatic detection on new footage you still need a trained `best.pt` (or another weights file).
+- Python 3.11+
+- Node 20+
+- **Either** `weights/best.pt` (or `YOLO_WEIGHTS` pointing at a `.pt` file), **or** a Label Studio **JSON** export with `videorectangle` annotations.
 
 ### Backend
 
+Create the venv **inside `backend/`** (recommended):
+
 ```bash
-cd /path/to/SallyTracker
-python3 -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r backend/requirements.txt
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000 --app-dir backend
+cd backend
+python -m venv .venv
+source .venv/Scripts/activate   # Windows Git Bash
+pip install -r requirements.txt
 ```
 
-Health check: [http://127.0.0.1:8000/api/health](http://127.0.0.1:8000/api/health) reports whether the weights file exists.
+Start the API **from `backend/`** (do not add `--app-dir backend` here — that is only when launching from the repo root):
+
+```bash
+cd backend
+source .venv/Scripts/activate
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+From the **repository root** instead:
+
+```bash
+source backend/.venv/Scripts/activate
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --app-dir backend
+```
+
+Avoid `--reload` while a long YOLO job is running; a reload clears in-memory job state (uploads on disk are restored on restart when possible).
+
+**Health check:** [http://127.0.0.1:8000/api/health](http://127.0.0.1:8000/api/health)
+
+```json
+{
+  "ok": true,
+  "weights_exist": true,
+  "weights_path": ".../weights/best.pt",
+  "torch_version": "2.6.0+cu124",
+  "cuda_available": true,
+  "inference_device": "0",
+  "gpu_name": "NVIDIA GeForce GTX 1060 6GB"
+}
+```
+
+On a laptop without CUDA, `cuda_available` is `false` and `inference_device` is `"cpu"` — the app still works, just slower.
 
 ### Frontend
 
@@ -38,88 +69,200 @@ npm install
 npm run dev
 ```
 
-Open [http://127.0.0.1:5173](http://127.0.0.1:5173). The Vite dev server **proxies** `/api` to the backend on port 8000.
+Open [http://127.0.0.1:5173](http://127.0.0.1:5173). Vite **proxies** `/api` to port 8000.
 
-### Committing `best.pt` with Git LFS
+### Fast GPU run (copy-paste)
 
-YOLO weights are large. After training, install [Git LFS](https://git-lfs.com/), then:
+Terminal 1 — backend:
 
 ```bash
-git lfs install
-git lfs track "*.pt"
-git add .gitattributes weights/best.pt
+cd /SalamanderTracker/backend
+source .venv/Scripts/activate
+export YOLO_CONF=0.1
+export YOLO_IMGSZ=320
+uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-The repo already includes a `.gitattributes` rule for `*.pt`; ensure LFS is installed before committing weights.
+Terminal 2 — frontend:
+
+```bash
+cd /SalamanderTracker/frontend
+npm run dev
+```
+
+Upload a **short** clip (15–60 s), ideally similar to training footage (e.g. `data/videos/raw/Salamander_Video_1.mp4`). Confirm `/api/health` shows `cuda_available: true` before expecting GPU speed.
 
 ---
 
-## Dataset and training pipeline
+## Label Studio video labeling → training → app
 
-This project includes an example **Label Studio export** in [`modelSettings.json`](modelSettings.json) (tasks with `videorectangle` annotations: keyframed boxes in percent of frame width/height, with `frame` indices and `labels: ["Salamander"]`). That file reflects **two labeled videos** (`86128414-Salamander_Video_1.mp4` and `daf50286-Salamander_Video.mp4` in the export metadata). The sequences are **sparse keyframes**; the prep script turns **each keyframe into one training image** with a YOLO label line per object track (axis-aligned box; Label Studio **rotation is ignored**, same as the in-app import).
+You can label **in Label Studio’s video tool** (not only still frames). Export **JSON** (not CSV). Each task should have `type: "videorectangle"` with a `sequence` of keyframes (`frame`, `x`, `y`, `width`, `height` in **percent**, axis-aligned boxes only — rotation is ignored).
 
-### 1. Put your source MP4s on disk
+Example exports in this repo:
 
-Copy the actual video files into **`data/videos/raw/`** using either the exact `file_upload` name from the export or the suffix after the first hyphen (e.g. `Salamander_Video_1.mp4` for `86128414-Salamander_Video_1.mp4`).
+- `[modelSettings.json](modelSettings.json)` — sample with 39 keyframes across two tasks
+- `[project-7-at-2026-05-25-18-33-901d5158.json](project-7-at-2026-05-25-18-33-901d5158.json)` — same shape; use **your** export path in commands below
 
-### 2. Build `data/dataset/` from the JSON
+### 1. Put source MP4s on disk
 
-From the **repository root** (with the same virtualenv as the backend, so `opencv-python-headless` and `ultralytics` are installed):
+Copy videos into `data/videos/raw/`. Names can match `file_upload` exactly, or the suffix after the first hyphen:
+
+
+| Export `file_upload`              | Also works as            |
+| --------------------------------- | ------------------------ |
+| `86128414-Salamander_Video_1.mp4` | `Salamander_Video_1.mp4` |
+| `daf50286-Salamander_Video.mp4`   | `Salamander_Video.mp4`   |
+
+
+### 2. Build YOLO dataset from JSON + videos
+
+From the **repository root** (backend venv active):
 
 ```bash
-python scripts/prepare_dataset.py --export modelSettings.json --videos-dir data/videos/raw --out data/dataset
+python scripts/prepare_dataset.py \
+  --export project-7-at-2026-05-25-18-33-901d5158.json \
+  --videos-dir data/videos/raw \
+  --out data/dataset \
+  --clean
 ```
 
-Use **`--clean`** to wipe existing `data/dataset/images` and `data/dataset/labels` before regenerating. The script writes **`data/dataset/dataset.yaml`** with an absolute `path:` so training works regardless of current working directory.
-
-**Frames labeled (for your write-up):** the number of **images** produced equals the number of **unique keyframe indices** across tasks (multiple `videorectangle` tracks on the same frame become multiple lines in one `.txt` file). With the checked-in export and both videos present, that is **39** images (26 keyframes on task 67 + 13 on task 68).
+Each **keyframe** becomes one training image + `.txt` label. The script prints how many pairs were written — use that count in your write-up (**frames labeled** = number of images produced, not every frame of the video).
 
 ### 3. Train YOLO11n
 
 ```bash
-python scripts/train.py
+python scripts/train.py --data data/dataset/dataset.yaml --name salamander_run1
 ```
 
-Defaults match the bundled trainer: **`yolo11n.pt`**, **`imgsz=320`**, **`batch=8`**, **`epochs=50`**, augment flags as in [`scripts/train.py`](scripts/train.py). Weights and logs are written under **`runs/detect/<name>/`** (see `--name`, default `run1`). Copy the trained file to the web app:
+Defaults: `yolo11n.pt`, `imgsz=320`, `batch=8`, `epochs=50`. Copy weights for the web app:
 
 ```bash
-cp runs/detect/run1/weights/best.pt weights/best.pt
+mkdir -p weights
+cp runs/detect/salamander_run1/weights/best.pt weights/best.pt
 ```
 
-If `yolo11n.pt` is not found, upgrade Ultralytics (`pip install -U ultralytics`) or pass **`--model yolov8n.pt`** (or another checkpoint) to `scripts/train.py`.
+### 4. Preview labels in the UI (optional, no YOLO)
 
-The web app uses `model.track(..., persist=True)` so displayed **track IDs** are stable enough for short clips; occlusions can still cause ID switches.
+Export JSON from Label Studio → in the web UI, upload the **same MP4** + attach the JSON → **Build playback from labels**. Set **Task id** (e.g. `67`) if multiple tasks match the filename.
 
 ---
 
-## Color masking vs YOLO
+## Inference tuning (environment variables)
 
-**Color masking** (thresholding in HSV/Lab, background subtraction, or hand-tuned rules) is fast, lightweight, and easy to debug when the salamander’s color is distinct, lighting is stable, and the background is simple. It falls apart quickly with mud, glare, shadows, similar-colored debris, partial occlusion, or compression noise. **YOLO** (especially after fine-tuning on your own frames) learns appearance and context, handles clutter and variable lighting better, and gives you a standard box format for downstream metrics—at the cost of labeling effort, training time, and heavier runtime (GPU helps). A practical approach for field footage is to use **YOLO for detection** and, only in very controlled lab setups, optionally refine with a mask if the scene is genuinely color-stable.
+Set before starting `uvicorn`:
+
+
+| Variable          | Default                        | Effect                                                                                           |
+| ----------------- | ------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `YOLO_DEVICE`     | auto (`0` if CUDA, else `cpu`) | Force GPU `0`, `cuda`, or `cpu`                                                                  |
+| `YOLO_CONF`       | `0.1`                          | Detection confidence (Ultralytics default is `0.25`; lower helps weak detections on new footage) |
+| `YOLO_IMGSZ`      | `320`                          | Inference size; should match training (`320`)                                                    |
+| `YOLO_VID_STRIDE` | `1`                            | Run YOLO every Nth frame (`2` ≈ 2× faster; skipped frames hold the last box in playback)         |
+| `YOLO_WEIGHTS`    | `weights/best.pt`              | Override weights path                                                                            |
+
+
+Example:
+
+```bash
+export YOLO_CONF=0.3
+export YOLO_IMGSZ=320
+export YOLO_VID_STRIDE=2
+export YOLO_DEVICE=0
+```
+
+### NVIDIA GPU on Windows
+
+1. `nvidia-smi` — confirm the GPU is visible.
+2. In `backend/.venv`:
+  ```bash
+   python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
+  ```
+3. If you see `+cpu` and `False`, install CUDA PyTorch:
+  ```bash
+   pip uninstall -y torch torchvision
+   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+  ```
+4. Restart uvicorn; `/api/health` should show `cuda_available: true`.
+
+**CPU-only machines** (e.g. many laptops): use the normal `pip install -r requirements.txt` — no CUDA wheel required. Inference falls back to CPU automatically.
+
+---
+
+## Troubleshooting
+
+### No bounding boxes after upload
+
+1. Job status is `done` but boxes never appear — open `/api/jobs/{id}/tracks` and check whether `frames[*].tracks` are empty.
+2. **Model mismatch** — `best.pt` may work on training frames but not on very different footage (lighting, angle, background). Test with `data/videos/raw/Salamander_Video_1.mp4` or use **Label Studio JSON** to verify the player.
+3. **Low confidence** — lower `YOLO_CONF` (e.g. `0.05`), restart the server, and **re-upload** (old jobs keep old tracks).
+4. **Sparse detections** — scrub the timeline; boxes only exist on frames where YOLO fired. The UI shows a warning banner when **zero** detections exist for the whole clip.
+
+### `ModuleNotFoundError: No module named 'app'`
+
+You are in `backend/` but passed `--app-dir backend`. Either:
+
+- `uvicorn app.main:app --host 127.0.0.1 --port 8000` from `backend/`, **or**
+- `uvicorn app.main:app --host 127.0.0.1 --port 8000 --app-dir backend` from the repo root.
+
+### `Missing export file: my_export.json`
+
+Use your real export filename, e.g. `project-7-at-2026-05-25-18-33-901d5158.json`, not a placeholder.
+
+### Job polling returns 404
+
+The server restarted and lost in-memory job IDs. Refresh the page and upload again. Completed jobs on disk may be **restored** on startup; interrupted runs show `error` with a restart message.
+
+### Very slow processing
+
+An 8-minute / 11k-frame clip on CPU can take **an hour or more**. Trim to 15–60 s for demos, use GPU, or set `YOLO_VID_STRIDE=2`.
 
 ---
 
 ## API overview
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/health` | Service and weights path check |
-| POST | `/api/jobs` | Multipart: **`file`** (video, required), optional **`labels`** (Label Studio JSON), optional form field **`task_id`** (integer) → `{ job_id }`. If `labels` is present, YOLO is skipped and tracks are built from `videorectangle` keyframes. |
-| GET | `/api/jobs/{id}` | `pending` \| `running` \| `done` \| `error` |
-| GET | `/api/jobs/{id}/video` | Processed input video for playback |
-| GET | `/api/jobs/{id}/tracks` | JSON: per-frame boxes, confidences, track ids |
 
-Job files live under `backend/data/jobs/` (gitignored).
+| Method | Path                    | Description                                                                            |
+| ------ | ----------------------- | -------------------------------------------------------------------------------------- |
+| GET    | `/api/health`           | Weights, PyTorch/CUDA info, `inference_device`                                         |
+| POST   | `/api/jobs`             | Multipart: `file` (video), optional `labels` (JSON), optional `task_id` → `{ job_id }` |
+| GET    | `/api/jobs/{id}`        | `status`, `percent` (0–100), optional `error`, `meta` when done                        |
+| GET    | `/api/jobs/{id}/video`  | Input video for playback                                                               |
+| GET    | `/api/jobs/{id}/tracks` | Per-frame boxes: `id`, `xyxy`, `conf`                                                  |
+
+
+Job files: `backend/data/jobs/{job_id}/` (`input.`*, `tracks.json`, `meta.json`, optional `labelstudio_export.json`).
+
+---
+
+## Committing `best.pt` with Git LFS
+
+```bash
+git lfs install
+git lfs track "*.pt"
+git add .gitattributes weights/best.pt
+git commit -m "Add trained salamander weights"
+```
+
+`.gitattributes` already lists `*.pt`; install LFS before committing large weights.
 
 ---
 
 ## Project layout
 
-- [`backend/app/main.py`](backend/app/main.py) — FastAPI routes, CORS, background jobs  
-- [`backend/app/process_video.py`](backend/app/process_video.py) — Ultralytics `track()` → `tracks.json`  
-- [`backend/app/labelstudio_import.py`](backend/app/labelstudio_import.py) — Label Studio JSON → interpolated `tracks.json`  
-- [`scripts/prepare_dataset.py`](scripts/prepare_dataset.py) — Label Studio JSON + MP4s → YOLO `images/` + `labels/` + `dataset.yaml`  
-- [`scripts/train.py`](scripts/train.py) — Fine-tune **YOLO11n** (or `--model`) on the prepared dataset  
-- [`frontend/`](frontend/) — React UI, canvas overlay, metrics  
+
+| Path                                                                                               | Role                                                       |
+| -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `[backend/app/main.py](backend/app/main.py)`                                                       | FastAPI routes, background jobs, progress updates          |
+| `[backend/app/process_video.py](backend/app/process_video.py)`                                     | YOLO `track()` → `tracks.json`; GPU/CPU device; env tuning |
+| `[backend/app/labelstudio_import.py](backend/app/labelstudio_import.py)`                           | Label Studio JSON → interpolated `tracks.json`             |
+| `[backend/app/jobs.py](backend/app/jobs.py)`                                                       | Job registry; restore jobs from disk after reload          |
+| `[scripts/prepare_dataset.py](scripts/prepare_dataset.py)`                                         | Label Studio JSON + MP4s → YOLO dataset                    |
+| `[scripts/train.py](scripts/train.py)`                                                             | Fine-tune YOLO11n                                          |
+| `[frontend/src/App.tsx](frontend/src/App.tsx)`                                                     | Upload, polling, progress wheel                            |
+| `[frontend/src/components/VideoPlayerOverlay.tsx](frontend/src/components/VideoPlayerOverlay.tsx)` | Video + canvas boxes / trail                               |
+| `[frontend/src/components/ProgressWheel.tsx](frontend/src/components/ProgressWheel.tsx)`           | Circular progress indicator                                |
+| `[weights/best.pt](weights/best.pt)`                                                               | Trained weights (you add via LFS)                          |
+
 
 ---
 

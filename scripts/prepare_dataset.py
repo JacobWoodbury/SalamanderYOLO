@@ -221,7 +221,7 @@ def main() -> None:
     yaml_path.write_text(yaml_text, encoding="utf-8")
 
     print(f"Wrote {written} image/label pairs under {out_root} (from {len(samples)} keyframes)")
-    print(f"dataset.yaml → {yaml_path}")
+    print(f"dataset.yaml -> {yaml_path}")
     print("Next: python scripts/train.py")
 
 

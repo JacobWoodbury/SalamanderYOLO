@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from app import jobs
 from app.labelstudio_import import run_labelstudio_import
-from app.process_video import default_weights_path, run_tracking
+from app.process_video import default_weights_path, inference_device, run_tracking
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,11 @@ def _process_job(job_id: str) -> None:
     job = jobs.get_job(job_id)
     if not job or not job.work_dir:
         return
-    jobs.update_job(job_id, status=jobs.JobStatus.RUNNING, error=None)
+
+    def on_progress(percent: int) -> None:
+        jobs.update_job(job_id, percent=min(100, max(0, int(percent))))
+
+    jobs.update_job(job_id, status=jobs.JobStatus.RUNNING, error=None, percent=0)
     try:
         inputs = sorted(job.work_dir.glob("input.*"))
         if not inputs:
@@ -47,14 +51,20 @@ def _process_job(job_id: str) -> None:
                 work_dir=job.work_dir,
                 upload_filename=upload_name,
                 task_id_hint=task_hint or None,
+                on_progress=on_progress,
             )
         else:
             weights = default_weights_path()
-            meta = run_tracking(input_video=input_path, work_dir=job.work_dir, weights_path=weights)
-        jobs.update_job(job_id, status=jobs.JobStatus.DONE, meta=meta, error=None)
+            meta = run_tracking(
+                input_video=input_path,
+                work_dir=job.work_dir,
+                weights_path=weights,
+                on_progress=on_progress,
+            )
+        jobs.update_job(job_id, status=jobs.JobStatus.DONE, meta=meta, error=None, percent=100)
     except Exception as e:
         logger.exception("Job %s failed", job_id)
-        jobs.update_job(job_id, status=jobs.JobStatus.ERROR, error=str(e))
+        jobs.update_job(job_id, status=jobs.JobStatus.ERROR, error=str(e), percent=0)
 
 
 app = FastAPI(title="Salamander tracker API")
@@ -75,12 +85,26 @@ app.add_middleware(
 def startup() -> None:
     DATA_ROOT.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(level=logging.INFO)
+    n = jobs.restore_jobs_from_disk(DATA_ROOT)
+    if n:
+        logger.info("Restored %d job(s) from disk after reload", n)
 
 
 @app.get("/api/health")
 def health() -> dict:
+    import torch
+
     w = default_weights_path()
-    return {"ok": True, "weights_path": str(w), "weights_exist": w.is_file()}
+    dev = inference_device()
+    return {
+        "ok": True,
+        "weights_path": str(w),
+        "weights_exist": w.is_file(),
+        "torch_version": torch.__version__,
+        "cuda_available": torch.cuda.is_available(),
+        "inference_device": str(dev),
+        "gpu_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+    }
 
 
 @app.post("/api/jobs")
@@ -140,7 +164,7 @@ def get_job(job_id: str) -> dict:
     job = jobs.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    out: dict = {"status": job.status.value}
+    out: dict = {"status": job.status.value, "percent": job.percent}
     if job.error:
         out["error"] = job.error
     if job.meta:

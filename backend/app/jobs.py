@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import enum
+import json
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -19,6 +20,7 @@ class JobStatus(str, enum.Enum):
 class Job:
     id: str
     status: JobStatus = JobStatus.PENDING
+    percent: int = 0
     error: Optional[str] = None
     meta: dict[str, Any] = field(default_factory=dict)
     work_dir: Optional[Path] = None
@@ -50,3 +52,43 @@ def update_job(job_id: str, **kwargs: Any) -> None:
             return
         for k, v in kwargs.items():
             setattr(job, k, v)
+
+
+def restore_jobs_from_disk(work_root: Path) -> int:
+    """Re-register jobs after a server reload (--reload clears in-memory state)."""
+    if not work_root.is_dir():
+        return 0
+    restored = 0
+    with _lock:
+        for work_dir in work_root.iterdir():
+            if not work_dir.is_dir():
+                continue
+            job_id = work_dir.name
+            if len(job_id) != 32 or job_id in _jobs:
+                continue
+            meta: dict[str, Any] = {}
+            error: Optional[str] = None
+            tracks_path = work_dir / "tracks.json"
+            meta_path = work_dir / "meta.json"
+            if tracks_path.is_file():
+                status = JobStatus.DONE
+                if meta_path.is_file():
+                    try:
+                        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                    except (OSError, json.JSONDecodeError):
+                        meta = {}
+            elif list(work_dir.glob("input.*")):
+                status = JobStatus.ERROR
+                error = "Processing was interrupted (server restarted). Upload again."
+            else:
+                continue
+            _jobs[job_id] = Job(
+                id=job_id,
+                status=status,
+                percent=100 if status == JobStatus.DONE else 0,
+                error=error,
+                meta=meta,
+                work_dir=work_dir,
+            )
+            restored += 1
+    return restored

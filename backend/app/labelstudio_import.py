@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from app.video_io import probe_video
 
@@ -145,6 +145,7 @@ def run_labelstudio_import(
     work_dir: Path,
     upload_filename: str,
     task_id_hint: Optional[str] = None,
+    on_progress: Optional[Callable[[int], None]] = None,
 ) -> dict[str, Any]:
     """
     Build tracks.json from Label Studio JSON (videorectangle keyframes), interpolated per video frame.
@@ -174,6 +175,8 @@ def run_labelstudio_import(
     n = max(n, max_ls)
 
     frames: list[dict[str, Any]] = []
+    if on_progress:
+        on_progress(0)
     for fi in range(n):
         ls_frame = fi + 1
         tracks: list[dict[str, Any]] = []
@@ -182,6 +185,8 @@ def run_labelstudio_import(
             xyxy = _pct_to_xyxy(x, y, w, h, width, height)
             tracks.append({"id": tid, "xyxy": xyxy, "conf": 1.0})
         frames.append({"i": fi, "tracks": tracks})
+        if on_progress and (fi % 30 == 0 or fi == n - 1):
+            on_progress(min(95, int((fi + 1) / n * 95)))
 
     meta: dict[str, Any] = {
         "fps": fps,

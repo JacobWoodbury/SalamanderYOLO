@@ -1,4 +1,4 @@
-import type { TracksPayload } from "../types";
+import type { FrameTracks, TracksPayload } from "../types";
 
 export type PathPoint = { frame: number; x: number; y: number };
 
@@ -29,6 +29,17 @@ export function frameIndexForTime(currentTime: number, fps: number, frameCount: 
   if (frameCount <= 0) return 0;
   const raw = Math.floor(currentTime * fps);
   return Math.min(Math.max(raw, 0), frameCount - 1);
+}
+
+export function totalDetections(data: TracksPayload): number {
+  return data.frames.reduce((n, f) => n + f.tracks.length, 0);
+}
+
+export function frameByIndex(data: TracksPayload, frameIndex: number): FrameTracks | undefined {
+  if (frameIndex < 0 || frameIndex >= data.frames.length) return undefined;
+  const direct = data.frames[frameIndex];
+  if (direct?.i === frameIndex) return direct;
+  return data.frames.find((f) => f.i === frameIndex);
 }
 
 export function colorForId(id: number): string {

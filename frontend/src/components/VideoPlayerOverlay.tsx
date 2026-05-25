@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { FrameTracks, TracksPayload } from "../types";
 import type { PathPoint } from "../lib/tracks";
-import { colorForId, frameIndexForTime } from "../lib/tracks";
+import { colorForId, frameByIndex, frameIndexForTime } from "../lib/tracks";
 
 type Props = {
   jobId: string;
@@ -39,7 +39,7 @@ export default function VideoPlayerOverlay({
     if (!ctx) return;
     ctx.clearRect(0, 0, vw, vh);
 
-    const frameData: FrameTracks | undefined = data.frames[currentFrame];
+    const frameData: FrameTracks | undefined = frameByIndex(data, currentFrame);
 
     if (showTrail) {
       ctx.lineWidth = 2;

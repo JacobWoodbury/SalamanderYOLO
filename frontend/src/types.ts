@@ -23,6 +23,7 @@ export type TracksPayload = {
 
 export type JobStatusResponse = {
   status: "pending" | "running" | "done" | "error";
+  percent?: number;
   error?: string;
   meta?: TracksPayload["meta"];
 };

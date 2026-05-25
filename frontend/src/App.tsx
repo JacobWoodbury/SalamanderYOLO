@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JobStatusResponse, TracksPayload } from "./types";
 import VideoPlayerOverlay from "./components/VideoPlayerOverlay";
 import MetricsPanel from "./components/MetricsPanel";
-import { buildPaths, detectionCounts } from "./lib/tracks";
+import ProgressWheel from "./components/ProgressWheel";
+import { buildPaths, detectionCounts, totalDetections } from "./lib/tracks";
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
@@ -35,6 +36,15 @@ export default function App() {
   useEffect(() => {
     if (!jobId) return;
     let cancelled = false;
+    let intervalId: ReturnType<typeof window.setInterval> | undefined;
+
+    const stopPolling = () => {
+      if (intervalId !== undefined) {
+        window.clearInterval(intervalId);
+        intervalId = undefined;
+      }
+    };
+
     const tick = async () => {
       try {
         const s = await fetchJson<JobStatusResponse>(`/api/jobs/${jobId}`);
@@ -43,24 +53,30 @@ export default function App() {
         if (s.status === "done") {
           const t = await fetchJson<TracksPayload>(`/api/jobs/${jobId}/tracks`);
           if (!cancelled) setTracks(t);
-        }
-        if (s.status === "error") {
+          stopPolling();
+        } else if (s.status === "error") {
           setError(s.error ?? "Job failed");
+          stopPolling();
         }
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : String(e));
+          stopPolling();
+        }
       }
     };
+
     void tick();
-    const id = window.setInterval(tick, 1000);
+    intervalId = window.setInterval(tick, 1000);
     return () => {
       cancelled = true;
-      window.clearInterval(id);
+      stopPolling();
     };
   }, [jobId]);
 
   const paths = useMemo(() => (tracks ? buildPaths(tracks) : new Map()), [tracks]);
   const counts = useMemo(() => (tracks ? detectionCounts(tracks) : []), [tracks]);
+  const detectionTotal = useMemo(() => (tracks ? totalDetections(tracks) : 0), [tracks]);
 
   const onFrameChange = useCallback((frame: number) => {
     setCurrentFrame(frame);
@@ -92,6 +108,9 @@ export default function App() {
   };
 
   const done = status?.status === "done" && tracks && jobId;
+  const processing =
+    jobId && (status?.status === "pending" || status?.status === "running");
+  const progressPct = status?.percent ?? 0;
 
   return (
     <div className="app">
@@ -168,7 +187,21 @@ export default function App() {
             </button>
           </div>
         </div>
-        {jobId && (
+        {processing && (
+          <div className="progress-section">
+            <ProgressWheel
+              percent={progressPct}
+              label={
+                status?.status === "running"
+                  ? labelFile
+                    ? "Building tracks from labels…"
+                    : "Running YOLO tracking…"
+                  : "Starting…"
+              }
+            />
+          </div>
+        )}
+        {jobId && !processing && (
           <p style={{ marginTop: "0.75rem" }}>
             Job <code>{jobId}</code> —{" "}
             <span className={`status status-${status?.status ?? "pending"}`}>{status?.status ?? "…"}</span>
@@ -183,6 +216,16 @@ export default function App() {
 
       {done && (
         <>
+          {detectionTotal === 0 && (
+            <section className="panel no-detections-banner">
+              <p>
+                <strong>No salamanders detected</strong> in this clip. YOLO ran successfully, but found zero boxes.
+                Try a video similar to your training footage (lighting, angle, plastic salamander on a clear
+                background), or upload your <strong>Label Studio JSON</strong> to preview manual labels. You can also
+                lower sensitivity with <code>YOLO_CONF=0.05</code> on the server and re-upload.
+              </p>
+            </section>
+          )}
           <section className="panel">
             <div className="row" style={{ marginBottom: "0.75rem" }}>
               <label className="row">

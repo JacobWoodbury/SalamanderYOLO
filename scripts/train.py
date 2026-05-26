@@ -21,6 +21,8 @@ from pathlib import Path
 
 from ultralytics import YOLO
 
+from model_weights import ensure_downloadable_model
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -73,7 +75,8 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    model = YOLO(args.model)
+    model_name = ensure_downloadable_model(args.model, ROOT)
+    model = YOLO(model_name)
     model.train(
         data=args.data,
         epochs=args.epochs,

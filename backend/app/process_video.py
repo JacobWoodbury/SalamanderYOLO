@@ -23,6 +23,34 @@ def default_weights_path() -> Path:
     return _repo_root() / "weights" / "best.pt"
 
 
+def validate_weights_file(weights_path: Path) -> None:
+    """
+    Reject Git LFS pointer stubs and other non-checkpoint files before torch.load runs.
+    """
+    if not weights_path.is_file():
+        raise FileNotFoundError(
+            f"YOLO weights not found at {weights_path}. "
+            "Train and place best.pt in weights/, or set YOLO_WEIGHTS (e.g. yolo11n.pt)."
+        )
+    head = weights_path.read_bytes()[:256]
+    if head.startswith(b"version https://git-lfs.github.com"):
+        raise ValueError(
+            f"{weights_path} is a Git LFS pointer, not real model weights. "
+            "Run: git lfs pull — or copy a trained best.pt from runs/detect/.../weights/best.pt — "
+            "or set YOLO_WEIGHTS=yolo11n.pt to use a downloaded base model."
+        )
+    if head.lstrip().startswith((b"{", b"[")):
+        raise ValueError(
+            f"{weights_path} looks like JSON/text, not a PyTorch .pt checkpoint. "
+            "Use weights/best.pt from training, not a Label Studio export."
+        )
+    size = weights_path.stat().st_size
+    if size < 100_000:
+        raise ValueError(
+            f"{weights_path} is too small ({size} bytes) to be a YOLO weights file."
+        )
+
+
 def _env_float(name: str, default: float, minimum: float = 0.0, maximum: float = 1.0) -> float:
     raw = os.environ.get(name)
     if raw is None or not str(raw).strip():
@@ -124,11 +152,7 @@ def run_tracking(
     """
     if not input_video.is_file():
         raise FileNotFoundError(str(input_video))
-    if not weights_path.is_file():
-        raise FileNotFoundError(
-            f"YOLO weights not found at {weights_path}. "
-            "Train and place best.pt in weights/, or set YOLO_WEIGHTS."
-        )
+    validate_weights_file(weights_path)
 
     fps, width, height, frame_count_cv = probe_video(input_video)
     imgsz = _env_int("YOLO_IMGSZ", 320, minimum=160)

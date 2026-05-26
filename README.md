@@ -17,9 +17,42 @@ Training used `scripts/train.py` with `yolo11n.pt` as the base, `imgsz=320`, `ba
 ---
 Masking would work well when using the plastic salamanders on a table or floor. Their colors are consistent, and the background is generally consistent. When it comes to real salamanders there colors very much more, with some actively blending to their enviornment. YOLO can perform better when it needs to detect the shapes when colors might be too similar to distinguish. 
 
-## How to run
+## First-time setup (one-time)
 
-### Prerequisites
+Use this once on a fresh machine to install backend and frontend dependencies.
+
+### Option A: automated script (recommended)
+
+From the repository root:
+
+```bash
+chmod +x scripts/setup.sh
+./scripts/setup.sh
+```
+
+Notes:
+- The script creates `backend/.venv`, upgrades `pip`, installs `backend/requirements.txt`, and runs `npm install` in `frontend/`.
+- If you only want Python setup, run `./scripts/setup.sh --skip-npm`.
+
+### Option B: manual setup
+
+```bash
+# from repo root
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate          # macOS/Linux
+# source .venv/Scripts/activate    # Windows Git Bash
+pip install -r requirements.txt
+
+cd ../frontend
+npm install
+```
+
+---
+
+## Basic run/start instructions
+
+### Prerequisites (after setup)
 
 - Python 3.11+
 - Node 20+
@@ -27,27 +60,20 @@ Masking would work well when using the plastic salamanders on a table or floor. 
 
 ### Backend
 
-Create the venv **inside `backend/`** (recommended):
-
-```bash
-cd backend
-python -m venv .venv
-source .venv/Scripts/activate   # Windows Git Bash
-pip install -r requirements.txt
-```
-
 Start the API **from `backend/`** (do not add `--app-dir backend` here — that is only when launching from the repo root):
 
 ```bash
 cd backend
-source .venv/Scripts/activate
+source .venv/bin/activate      # macOS/Linux
+# source .venv/Scripts/activate # Windows Git Bash
 uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 From the **repository root** instead:
 
 ```bash
-source backend/.venv/Scripts/activate
+source backend/.venv/bin/activate      # macOS/Linux
+# source backend/.venv/Scripts/activate # Windows Git Bash
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --app-dir backend
 ```
 
@@ -264,6 +290,7 @@ git commit -m "Add trained salamander weights"
 | `[backend/app/process_video.py](backend/app/process_video.py)`                                     | YOLO `track()` → `tracks.json`; GPU/CPU device; env tuning |
 | `[backend/app/labelstudio_import.py](backend/app/labelstudio_import.py)`                           | Label Studio JSON → interpolated `tracks.json`             |
 | `[backend/app/jobs.py](backend/app/jobs.py)`                                                       | Job registry; restore jobs from disk after reload          |
+| `[scripts/setup.sh](scripts/setup.sh)`                                                             | First-time one-command environment setup                   |
 | `[scripts/prepare_dataset.py](scripts/prepare_dataset.py)`                                         | Label Studio JSON + MP4s → YOLO dataset                    |
 | `[scripts/train.py](scripts/train.py)`                                                             | Fine-tune YOLO11n                                          |
 | `[frontend/src/App.tsx](frontend/src/App.tsx)`                                                     | Upload, polling, progress wheel                            |

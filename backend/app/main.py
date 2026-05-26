@@ -11,7 +11,12 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from app import jobs
 from app.labelstudio_import import run_labelstudio_import
-from app.process_video import default_weights_path, inference_device, run_tracking
+from app.process_video import (
+    default_weights_path,
+    inference_device,
+    run_tracking,
+    validate_weights_file,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -95,11 +100,21 @@ def health() -> dict:
     import torch
 
     w = default_weights_path()
+    weights_ok = False
+    weights_issue: Optional[str] = None
+    if w.is_file():
+        try:
+            validate_weights_file(w)
+            weights_ok = True
+        except (FileNotFoundError, ValueError) as e:
+            weights_issue = str(e)
     dev = inference_device()
     return {
         "ok": True,
         "weights_path": str(w),
         "weights_exist": w.is_file(),
+        "weights_loadable": weights_ok,
+        "weights_issue": weights_issue,
         "torch_version": torch.__version__,
         "cuda_available": torch.cuda.is_available(),
         "inference_device": str(dev),

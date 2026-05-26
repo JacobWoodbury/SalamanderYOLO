@@ -22,6 +22,11 @@ runs/**/*.cache
 frontend/node_modules/
 frontend/dist/
 
+# Downloaded / stub checkpoints at repo root (use weights/best.pt after training)
+/yolo11n.pt
+/yolo26n.pt
+yolov8*.pt
+
 # OS / editor
 .DS_Store
 .idea/
